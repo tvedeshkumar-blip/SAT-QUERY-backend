@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: satquery-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: cd backend && pip install --no-cache-dir -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,http://localhost:5173,https://*.vercel.app,*"
+      - key: DEVICE
+        value: cpu
+      - key: GEMINI_API_KEY
+        sync: false

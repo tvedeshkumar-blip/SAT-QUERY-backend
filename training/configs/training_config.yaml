@@ -1,0 +1,27 @@
+# SatQuery AI Remote Sensing Adaptation Configuration
+
+model:
+  base_model: "Qwen/Qwen2-VL-7B-Instruct"
+  adapter_type: "lora"
+  lora_r: 16
+  lora_alpha: 32
+  target_modules: ["q_proj", "v_proj", "multi_modal_projector"]
+  device_map: "auto"
+
+dataset:
+  name: "BigEarthNet-MM"
+  source: "http://bigearth.net/"
+  modalities: ["optical_s2", "sar_s1"]
+  split_ratio: [0.8, 0.1, 0.1]
+  batch_size: 16
+  num_workers: 4
+
+training:
+  epochs: 10
+  learning_rate: 2.0e-4
+  weight_decay: 0.01
+  warmup_steps: 100
+  fp16: true
+  logging_steps: 10
+  save_strategy: "epoch"
+  output_dir: "./checkpoints"

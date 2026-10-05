@@ -1,0 +1,89 @@
+import logging
+from typing import Dict, Any, Optional, List
+import numpy as np
+from app.models.base import BaseModel
+from app.models.change_detection.change_detector import ChangeDetectionProvider
+
+logger = logging.getLogger("satquery.change_vqa")
+
+class ChangeVQA(BaseModel):
+    """
+    Evidence-grounded Bi-Temporal Change VQA Adapter.
+    Consumes empirical change detection evidence (pixel change ratio, cluster regions,
+    and spatial co-registration telemetry) to formulate honest natural language answers.
+    Strictly avoids claiming semantic classes (e.g. 'building increased') unless confirmed.
+    """
+    def __init__(self):
+        super().__init__(
+            model_name="EvidenceGroundedChangeVQA",
+            task_type="change_vqa",
+            implementation_status="baseline",
+            is_trained=False,
+            is_remote_sensing_adapted=False
+        )
+        self.change_detector = ChangeDetectionProvider()
+
+    def predict(
+        self, 
+        images: List[np.ndarray], 
+        query: Optional[str] = None, 
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        if len(images) < 2:
+            raise ValueError("Change VQA requires 2 image inputs (Earlier & Later).")
+
+        # Step 1: Run change detection to obtain structured evidence
+        cd_result = self.change_detector.predict(images, query, metadata)
+        
+        q = (query or "What changed between these two dates?").strip()
+        change_pct = cd_result.get("changed_area_percent", 0.0)
+        evidence = cd_result.get("evidence", [])
+        reg_info = cd_result.get("registration_info", {})
+
+        # Extract cluster statistics
+        cluster_count = 0
+        if len(evidence) > 1 and "boxes" in evidence[1]:
+            cluster_count = len(evidence[1]["boxes"])
+
+        # Check if query asks for semantic attribution
+        q_lower = q.lower()
+        semantic_query = any(k in q_lower for k in [
+            "building", "urban", "vegetation", "forest", "crop", "road", "water", "flood", "loss", "gain"
+        ])
+
+        # Formulate grounded, scientifically defensible answer
+        co_reg_note = (
+            "Inputs are verified co-registered." if reg_info.get("co_registered")
+            else "Inputs lack verified spatial co-registration; spatial shift may affect pixel differences."
+        )
+
+        if semantic_query:
+            attribution_text = (
+                "Spectral change detected; semantic class attribution unavailable without "
+                "a calibrated land cover classification model. Cannot definitively attribute "
+                f"spectral shifts to specific categorical changes (e.g., building expansion or crop clearing)."
+            )
+        else:
+            attribution_text = (
+                f"Detected notable reflectance variance across {cluster_count} distinct spatial clusters."
+            )
+
+        answer = (
+            f"Bi-temporal change analysis: {change_pct:.2f}% of the scene exhibited measurable spectral difference. "
+            f"{co_reg_note} {attribution_text}"
+        )
+
+        return {
+            "answer": answer,
+            "changed_area_percent": change_pct,
+            "cluster_count": cluster_count,
+            "model_type": "evidence_grounded_baseline",
+            "implementation_status": "baseline",
+            "semantic_attribution_available": False,
+            "evidence_based": True,
+            "confidence": None,
+            "confidence_label": "Not available (Evidence-Grounded Baseline)",
+            "models": [self.model_name, self.change_detector.model_name],
+            "registration_info": reg_info,
+            "evidence": evidence
+        }
