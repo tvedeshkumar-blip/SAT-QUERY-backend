@@ -12,7 +12,7 @@ torchvision
 transformers
 scikit-image
 scipy
-matplotlib>
+matplotlib
 reportlab
 pytest
 httpx
