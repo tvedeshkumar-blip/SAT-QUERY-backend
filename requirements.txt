@@ -18,3 +18,5 @@ pytest
 httpx
 python-dotenv
 google-genai
+requests
+pyyaml

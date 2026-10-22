@@ -62,9 +62,12 @@ def run_official_evaluation(payload: Optional[Dict[str, Any]] = None):
     Fails safely and honestly when official dataset is not mounted.
     """
     import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    repo_root = os.path.dirname(backend_dir)
-    official_dir = os.path.join(repo_root, "data", "official_isro")
+    cand_repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    official_dir = os.path.join(cand_repo, "data", "official_isro")
+    if not os.path.exists(os.path.join(cand_repo, "data")):
+        cand_parent = os.path.abspath(os.path.join(cand_repo, ".."))
+        if os.path.exists(os.path.join(cand_parent, "data")):
+            official_dir = os.path.join(cand_parent, "data", "official_isro")
 
     is_mounted = os.path.isdir(official_dir) and len([f for f in os.listdir(official_dir) if not f.startswith(".")]) > 0
     if not is_mounted:

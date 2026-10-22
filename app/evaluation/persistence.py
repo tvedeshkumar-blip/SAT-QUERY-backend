@@ -6,9 +6,12 @@ from app.evaluation.schemas import BenchmarkResultItem, EvaluationStatus
 
 logger = logging.getLogger("satquery.evaluation.persistence")
 
-RESULTS_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "benchmark_results.json")
-)
+def _get_results_path() -> str:
+    cand2 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "benchmark_results.json"))
+    cand3 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "benchmark_results.json"))
+    return cand2 if os.path.exists(os.path.dirname(cand2)) else cand3
+
+RESULTS_PATH = _get_results_path()
 
 def load_persisted_benchmark_results() -> List[BenchmarkResultItem]:
     """

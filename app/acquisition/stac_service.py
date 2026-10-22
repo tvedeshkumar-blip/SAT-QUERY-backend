@@ -65,7 +65,15 @@ class STACAcquisitionService:
         self._scene_cache: Dict[str, Dict[str, Any]] = {}
         
         # Ensure persistent retrieval directory exists
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        data_env = os.getenv("DATA_DIR")
+        if data_env and os.path.exists(data_env):
+            base_dir = data_env
+        else:
+            cand = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            if os.path.exists(os.path.join(cand, "data")):
+                base_dir = cand
+            else:
+                base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         self.retrieval_dir = os.path.join(base_dir, "data", "retrieved")
         self.samples_dir = os.path.join(base_dir, "data", "samples")
         os.makedirs(self.retrieval_dir, exist_ok=True)

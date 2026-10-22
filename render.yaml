@@ -4,14 +4,13 @@ services:
     env: python
     region: oregon
     plan: free
-    rootDir: backend
     buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: CORS_ORIGINS
-        value: "http://localhost:3000,http://localhost:5173,https://*.vercel.app,*"
+        value: "https://sat-query-gamma.vercel.app,http://localhost:3000,http://localhost:5173"
       - key: DEVICE
         value: cpu
       - key: GEMINI_API_KEY

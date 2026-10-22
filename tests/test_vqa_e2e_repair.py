@@ -7,7 +7,7 @@ from io import BytesIO
 from PIL import Image
 from fastapi.testclient import TestClient
 
-backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
@@ -213,8 +213,9 @@ class TestSingleImageVQARepair:
 
     def test_live_inference_on_existing_preview_image_file(self):
         """11. Live smoke test using the existing preview satellite image from data/retrieved."""
-        preview_path = os.path.join(backend_dir, "..", "data", "retrieved", "S2A_43PGQ_20231119_preview.jpg")
-        preview_path = os.path.normpath(preview_path)
+        cand_p1 = os.path.join(backend_dir, "data", "retrieved", "S2A_43PGQ_20231119_preview.jpg")
+        cand_p2 = os.path.join(backend_dir, "..", "data", "retrieved", "S2A_43PGQ_20231119_preview.jpg")
+        preview_path = os.path.normpath(cand_p1 if os.path.exists(cand_p1) else cand_p2)
 
         if not os.path.exists(preview_path):
             pytest.skip(f"Preview image '{preview_path}' not found on disk")
