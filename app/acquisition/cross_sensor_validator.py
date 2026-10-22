@@ -614,8 +614,9 @@ class CrossSensorValidator:
         # Check local sample ID
         scene_id = prov.get("scene_id") or prov.get("id") or ""
         if scene_id.startswith("local_sample_"):
-            clean_name = scene_id.replace("local_sample_", "") + ".tif"
-            base_dir = samples_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "samples"))
+            cand2 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "samples"))
+            cand3 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "samples"))
+            base_dir = samples_dir or (cand2 if os.path.exists(cand2) else cand3)
             sample_p = os.path.join(base_dir, clean_name)
             if os.path.exists(sample_p):
                 return sample_p, clean_name

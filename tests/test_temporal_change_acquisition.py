@@ -5,7 +5,7 @@ import json
 import base64
 
 # Ensure backend root is on sys.path
-backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
@@ -27,7 +27,9 @@ from app.remote_sensing.validation import ValidationError
 
 client = TestClient(app)
 
-SAMPLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "samples"))
+cand_samples1 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "samples"))
+cand_samples2 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "samples"))
+SAMPLES_DIR = cand_samples1 if os.path.exists(cand_samples1) else cand_samples2
 T1_PATH = os.path.join(SAMPLES_DIR, "temporal_t1_pre_monsoon.tif")
 T2_PATH = os.path.join(SAMPLES_DIR, "temporal_t2_post_monsoon.tif")
 

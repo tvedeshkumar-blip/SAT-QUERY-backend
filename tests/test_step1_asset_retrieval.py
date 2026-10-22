@@ -20,7 +20,7 @@ import sys
 import io
 import base64
 
-backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
@@ -827,7 +827,9 @@ def test_step3_windowed_retrieval_produces_real_validated_raster():
     # Point rasterio.open directly to the real repository test raster sample
     import rasterio
     from rasterio.io import MemoryFile
-    real_sample_path = os.path.abspath(os.path.join(backend_dir, "..", "data", "samples", "cartosat_optical_bengaluru.tif"))
+    cand1 = os.path.abspath(os.path.join(backend_dir, "data", "samples", "cartosat_optical_bengaluru.tif"))
+    cand2 = os.path.abspath(os.path.join(backend_dir, "..", "data", "samples", "cartosat_optical_bengaluru.tif"))
+    real_sample_path = cand1 if os.path.exists(cand1) else cand2
     assert os.path.exists(real_sample_path), f"Sample raster missing at {real_sample_path}"
 
     real_open = rasterio.open
