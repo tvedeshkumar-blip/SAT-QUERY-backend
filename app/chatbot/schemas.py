@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any, Union, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class ChatMessage(BaseModel):
     """
@@ -16,7 +16,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     """
-    Incoming request payload for the SatQuery local LM Studio chatbot.
+    Incoming request payload for the SatQuery Qwen-VL chatbot.
     """
     message: str = Field(
         ..., 
@@ -40,7 +40,7 @@ class ChatRequest(BaseModel):
     )
     model: Optional[str] = Field(
         default=None, 
-        description="Optional model override to pass to LM Studio"
+        description="Optional model identifier override"
     )
     temperature: Optional[float] = Field(
         default=0.2, 
@@ -55,6 +55,16 @@ class ChatRequest(BaseModel):
         description="Maximum token budget for assistant generation"
     )
 
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if not cleaned:
+            raise ValueError("Message cannot be empty or whitespace-only.")
+        if len(cleaned) > 10000:
+            raise ValueError("Message exceeds maximum allowable length of 10,000 characters.")
+        return cleaned
+
 class ChatResponse(BaseModel):
     """
     Structured response payload returned by the SatQuery chatbot.
@@ -64,16 +74,16 @@ class ChatResponse(BaseModel):
         description="Assistant natural-language response"
     )
     model: str = Field(
-        ..., 
-        description="The model name or identifier used/configured in LM Studio"
+        default="Qwen/Qwen2.5-VL-3B-Instruct", 
+        description="The model name or identifier used for generation"
     )
     provider: str = Field(
-        default="LM Studio", 
-        description="Designation of the inference engine (strictly 'LM Studio')"
+        default="Hugging Face Spaces", 
+        description="Designation of the inference engine"
     )
     status: str = Field(
         ..., 
-        description="Execution status: 'success', 'unavailable', or 'error'"
+        description="Execution status: 'success', 'standby', 'unavailable', or 'error'"
     )
     conversation_id: Optional[str] = Field(
         default=None, 
@@ -82,4 +92,12 @@ class ChatResponse(BaseModel):
     error: Optional[str] = Field(
         default=None, 
         description="Error detail message if status is not 'success'"
+    )
+    space_id: Optional[str] = Field(
+        default=None,
+        description="Hugging Face Space identifier providing the inference service"
+    )
+    duration_sec: Optional[float] = Field(
+        default=None,
+        description="Elapsed inference duration in seconds"
     )

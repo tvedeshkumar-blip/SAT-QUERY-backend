@@ -19,4 +19,6 @@ pytest
 httpx
 python-dotenv
 google-genai
+requests
+pyyaml
 gradio_client

@@ -105,3 +105,50 @@ def format_evidence_context(
 
     return "".join(context_parts)
 
+
+def assemble_qwen_prompt(
+    message: str,
+    history: Optional[List[Any]] = None,
+    evidence: Optional[Union[Dict[str, Any], List[Any]]] = None,
+    workspace_context: Optional[Union[Dict[str, Any], List[Any]]] = None
+) -> str:
+    """
+    Assembles a complete, grounded, single-turn prompt for Qwen/Qwen2.5-VL-3B-Instruct.
+    Incorporates:
+    - Domain system prompt and scientific integrity rules
+    - Active workspace scene metadata (if provided)
+    - Verified specialist perception evidence (if provided)
+    - Multi-turn conversation history (if provided)
+    - The user's current query
+    """
+    cleaned_query = (message or "").strip()
+
+    prompt_sections: List[str] = []
+
+    # 1. System domain rules and capabilities
+    prompt_sections.append(SATQUERY_SYSTEM_PROMPT.strip())
+
+    # 2. Evidence and workspace context
+    context_str = format_evidence_context(
+        evidence=evidence,
+        workspace_context=workspace_context
+    ).strip()
+    if context_str:
+        prompt_sections.append(context_str)
+
+    # 3. Conversation history
+    if history:
+        history_lines = ["\n--- RECENT CONVERSATION HISTORY ---"]
+        for turn in history:
+            role = getattr(turn, "role", None) or (turn.get("role") if isinstance(turn, dict) else None) or "user"
+            content = getattr(turn, "content", None) or (turn.get("content") if isinstance(turn, dict) else None) or ""
+            role_label = "User" if str(role).lower() == "user" else ("Assistant" if str(role).lower() == "assistant" else "System")
+            history_lines.append(f"{role_label}: {content}")
+        history_lines.append("--- END CONVERSATION HISTORY ---")
+        prompt_sections.append("\n".join(history_lines))
+
+    # 4. Current user query
+    prompt_sections.append(f"[CURRENT USER QUERY]:\n{cleaned_query}\n\n[ASSISTANT RESPONSE]:")
+
+    return "\n\n".join(prompt_sections)
+
