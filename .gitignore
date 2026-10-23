@@ -49,3 +49,6 @@ htmlcov/
 # OS generated
 .DS_Store
 Thumbs.db
+
+# Test & runtime raster downloads
+data/retrieved/

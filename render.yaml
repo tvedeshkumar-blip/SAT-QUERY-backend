@@ -13,5 +13,11 @@ services:
         value: "https://sat-query-gamma.vercel.app,http://localhost:3000,http://localhost:5173"
       - key: DEVICE
         value: cpu
+      - key: HF_SPACE_ID
+        value: Astro406/satquery-qwen-vl
+      - key: HF_API_NAME
+        value: /predict
+      - key: HF_REQUEST_TIMEOUT
+        value: "65"
       - key: GEMINI_API_KEY
         sync: false
