@@ -1,3 +1,4 @@
+
 --extra-index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn[standard]
@@ -20,4 +21,4 @@ python-dotenv
 google-genai
 requests
 pyyaml
-gradio_client>=1.3.0
+gradio_client
