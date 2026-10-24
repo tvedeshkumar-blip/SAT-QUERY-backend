@@ -27,7 +27,9 @@ from app.chatbot.hf_client import (
     HFSpaceStandbyError,
     HFSpaceTimeoutError,
     HFSpaceRateLimitError,
-    HFSpaceInferenceError
+    HFSpaceInferenceError,
+    redact_credentials,
+    get_supported_auth_arg
 )
 from app.chatbot.satquery_chatbot import SatQueryChatbot, satquery_chatbot
 from app.chatbot.prompts import (
@@ -451,3 +453,152 @@ def test_18_zerogpu_quota_rate_limit_handling():
             assert "ZeroGPU" in res.response
             assert "HF_TOKEN" in res.response
             assert res.error is not None
+
+
+# =========================================================================
+# 11. Gradio Client Initialization, Auth Arguments, and Credential Redaction
+# =========================================================================
+
+def test_19_hf_client_initialization_without_token():
+    """
+    Verify client initialization when no HF_TOKEN is configured.
+    Ensures that empty kwargs are resolved and Client is initialized without
+    unexpected keyword arguments.
+    """
+    hf_client = HuggingFaceClient(token=None)
+    assert hf_client.token is None
+
+    resolved_kwargs = hf_client._resolve_client_kwargs()
+    assert resolved_kwargs == {}
+
+    with patch("app.chatbot.hf_client.Client") as mock_client_cls:
+        mock_instance = MagicMock()
+        mock_client_cls.return_value = mock_instance
+
+        created = hf_client._get_or_create_client()
+        assert created == mock_instance
+        # Client must be called with space_id and NO unsupported auth keyword arguments
+        mock_client_cls.assert_called_once_with(hf_client.space_id)
+
+
+def test_20_hf_client_initialization_with_token():
+    """
+    Verify client initialization when an explicit token is provided.
+    For modern gradio_client (>= 1.0), verifies 'token' is passed and 'hf_token' is NEVER passed.
+    """
+    mock_token = "hf_test_secret_token_1234567890abcdef"
+    hf_client = HuggingFaceClient(token=mock_token)
+    assert hf_client.token == mock_token
+
+    resolved_kwargs = hf_client._resolve_client_kwargs()
+    # Installed version uses 'token'
+    assert "token" in resolved_kwargs
+    assert resolved_kwargs["token"] == mock_token
+    assert "hf_token" not in resolved_kwargs
+
+    with patch("app.chatbot.hf_client.Client") as mock_client_cls:
+        mock_instance = MagicMock()
+        mock_client_cls.return_value = mock_instance
+
+        created = hf_client._get_or_create_client()
+        assert created == mock_instance
+        mock_client_cls.assert_called_once_with(hf_client.space_id, token=mock_token)
+
+
+def test_21_hf_client_initialization_env_var_fallback(monkeypatch):
+    """Verify that HF_TOKEN from environment variable is correctly used when token parameter is omitted."""
+    env_token = "hf_from_environment_secret_abcdef987654321"
+    monkeypatch.setenv("HF_TOKEN", env_token)
+
+    hf_client = HuggingFaceClient()
+    assert hf_client.token == env_token
+
+    resolved_kwargs = hf_client._resolve_client_kwargs()
+    assert resolved_kwargs.get("token") == env_token
+    assert "hf_token" not in resolved_kwargs
+
+
+def test_22_hf_client_auth_arg_inspection_and_legacy_compatibility():
+    """
+    Verify get_supported_auth_arg dynamically adapts to gradio_client version:
+    - modern gradio_client uses 'token'
+    - legacy gradio_client (<1.0) uses 'hf_token'
+    - incompatible signature omits auth parameter rather than crashing
+    """
+    # 1. Real installed Client
+    assert get_supported_auth_arg() == "token"
+
+    # 2. Simulated legacy Client signature
+    class MockLegacyClient:
+        def __init__(self, src, hf_token=None):
+            pass
+
+    assert get_supported_auth_arg(MockLegacyClient) == "hf_token"
+    client_legacy = HuggingFaceClient(token="hf_legacy_token")
+    legacy_kwargs = client_legacy._resolve_client_kwargs(client_cls=MockLegacyClient)
+    assert legacy_kwargs == {"hf_token": "hf_legacy_token"}
+
+    # 3. Simulated Client signature without any auth parameter
+    class MockNoAuthClient:
+        def __init__(self, src, verbose=True):
+            pass
+
+    assert get_supported_auth_arg(MockNoAuthClient) is None
+    client_noauth = HuggingFaceClient(token="hf_token_ignored")
+    noauth_kwargs = client_noauth._resolve_client_kwargs(client_cls=MockNoAuthClient)
+    # Must be empty so it doesn't cause Client.__init__() got an unexpected keyword argument
+    assert noauth_kwargs == {}
+
+
+def test_23_hf_client_connection_error_redaction():
+    """Verify connection errors log diagnostics while completely redacting secret tokens."""
+    secret_token = "hf_super_secret_conn_token_999999"
+    hf_client = HuggingFaceClient(token=secret_token)
+
+    with patch("app.chatbot.hf_client.Client", side_effect=Exception(f"Connection failed with token={secret_token}")):
+        with pytest.raises(HFSpaceUnavailableError) as exc_info:
+            hf_client._get_or_create_client()
+
+        err_msg = str(exc_info.value)
+        assert secret_token not in err_msg
+        assert "[REDACTED" in err_msg
+        assert "Connection failed" in err_msg
+
+
+def test_24_hf_client_inference_error_redaction():
+    """Verify inference errors log diagnostics while completely redacting secret tokens and bearer headers."""
+    secret_token = "hf_super_secret_inference_token_888888"
+    hf_client = HuggingFaceClient(token=secret_token)
+
+    mock_client = MagicMock()
+    mock_client.predict.side_effect = Exception(f"HTTP 401 Unauthorized for Bearer {secret_token}")
+
+    with patch.object(hf_client, "_get_or_create_client", return_value=mock_client):
+        with pytest.raises(HFSpaceInferenceError) as exc_info:
+            hf_client.predict(question="Test satellite question")
+
+        err_msg = str(exc_info.value)
+        assert secret_token not in err_msg
+        assert "[REDACTED" in err_msg
+        assert "HTTP 401 Unauthorized" in err_msg
+
+
+def test_25_hf_client_repr_redaction():
+    """Verify that repr() on HuggingFaceClient never exposes secret tokens."""
+    secret_token = "hf_secret_token_in_repr_777777"
+    hf_client = HuggingFaceClient(token=secret_token)
+
+    repr_str = repr(hf_client)
+    assert secret_token not in repr_str
+    assert "auth_token_set=True" in repr_str
+
+
+def test_26_hf_client_reset_client():
+    """Verify reset_client clears cached client instance."""
+    hf_client = HuggingFaceClient()
+    hf_client._client = MagicMock()
+
+    assert hf_client._client is not None
+    hf_client.reset_client()
+    assert hf_client._client is None
+
