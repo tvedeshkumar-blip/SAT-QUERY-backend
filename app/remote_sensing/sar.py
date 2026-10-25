@@ -76,7 +76,85 @@ def compute_calibrated_dual_pol_sar(
         vv_meta = target_meta
 
     if vv_arr is None or vh_arr is None:
-        raise ValueError("Both VV and VH arrays are required for Sentinel-1 dual-polarization analysis.")
+        missing = []
+        if vv_arr is None:
+            missing.append("VV")
+        if vh_arr is None:
+            missing.append("VH")
+        return {
+            "status": "missing_polarization",
+            "is_calibrated": False,
+            "missing_polarization": missing,
+            "summary": f"Sentinel-1 RTC dual-pol analysis unsupported: Missing required polarization array(s): {', '.join(missing)}.",
+            "dprvi_mean": None,
+            "dprvi_p90": None,
+            "dprvi_median": None,
+            "dprvi_min": None,
+            "dprvi_max": None,
+            "cross_pol_ratio_linear": None,
+            "cross_pol_ratio_db": None,
+            "vv_mean_linear": None,
+            "vh_mean_linear": None,
+            "vv_mean_db": None,
+            "vh_mean_db": None,
+            "vv_pixel_db_mean": None,
+            "vh_pixel_db_mean": None,
+            "vegetation_proxy_coverage_pct": None,
+            "vegetation_threshold": dprvi_vegetation_threshold,
+            "veg_pixel_count": 0,
+            "valid_pixel_count": 0,
+            "total_pixel_count": 0,
+            "masked_pixel_count": 0,
+            "valid_data_fraction": 0.0,
+            "valid_mask": None,
+            "dprvi_array": None,
+            "cross_pol_array": None,
+            "colorized_preview_base64": None,
+            "preview_base64": None,
+            "polarization_mode": "DUAL_VV_VH",
+            "scientific_limitations": ["Missing required dual-polarization SAR telemetry."]
+        }
+
+    # Reject 3-channel RGB visual browse inputs passed as SAR rasters
+    is_rgb_visual = False
+    if vv_meta:
+        modality = str(vv_meta.get("modality", "")).upper()
+        asset_cat = str(vv_meta.get("asset_category", "")).lower()
+        if "OPTICAL" in modality or "RGB" in modality or "rgb_visual" in asset_cat:
+            is_rgb_visual = True
+    if is_rgb_visual:
+        return {
+            "status": "unsupported_rgb_as_sar",
+            "is_calibrated": False,
+            "summary": "Optical RGB visual browse images cannot be processed as Sentinel-1 SAR radar inputs. Requires genuine dual-pol VV and VH rasters.",
+            "dprvi_mean": None,
+            "dprvi_p90": None,
+            "dprvi_median": None,
+            "dprvi_min": None,
+            "dprvi_max": None,
+            "cross_pol_ratio_linear": None,
+            "cross_pol_ratio_db": None,
+            "vv_mean_linear": None,
+            "vh_mean_linear": None,
+            "vv_mean_db": None,
+            "vh_mean_db": None,
+            "vv_pixel_db_mean": None,
+            "vh_pixel_db_mean": None,
+            "vegetation_proxy_coverage_pct": None,
+            "vegetation_threshold": dprvi_vegetation_threshold,
+            "veg_pixel_count": 0,
+            "valid_pixel_count": 0,
+            "total_pixel_count": 0,
+            "masked_pixel_count": 0,
+            "valid_data_fraction": 0.0,
+            "valid_mask": None,
+            "dprvi_array": None,
+            "cross_pol_array": None,
+            "colorized_preview_base64": None,
+            "preview_base64": None,
+            "polarization_mode": "DUAL_VV_VH",
+            "scientific_limitations": ["Optical RGB visual browse inputs cannot be processed as Sentinel-1 SAR radar inputs."]
+        }
 
     # 1. Extract 2D single-band rasters
     if vv_arr.ndim == 3:
@@ -311,6 +389,7 @@ def compute_calibrated_dual_pol_sar(
         "valid_pixel_count": valid_pixel_count,
         "total_pixel_count": total_pixels,
         "masked_pixel_count": total_pixels - valid_pixel_count,
+        "valid_data_fraction": round(float(valid_pixel_count / max(1, total_pixels)), 4),
         "valid_mask": valid_mask,
         "dprvi_array": dprvi_arr,
         "cross_pol_array": cross_pol_ratio_arr,

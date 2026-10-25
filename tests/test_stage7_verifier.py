@@ -429,7 +429,7 @@ def test_llm_timeout_path():
 
 # Test 15: Preservation of existing analysis response fields and endpoint integration
 def test_preservation_of_analysis_response_fields():
-    from app.tests.test_optical_sar_cross_sensor import create_geotiff_b64
+    from tests.test_optical_sar_cross_sensor import create_geotiff_b64
     opt_b64 = create_geotiff_b64(bounds=(77.5, 12.9, 77.6, 13.0))
     sar_b64 = create_geotiff_b64(bounds=(77.5, 12.9, 77.6, 13.0), tags={"POLARIZATION": "VV"})
 

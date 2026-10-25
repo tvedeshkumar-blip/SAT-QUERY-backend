@@ -99,6 +99,10 @@ class AnalysisResponseSchema(BaseModel):
     model_provenance: Optional[Dict[str, Any]] = Field(default=None, description="Detailed model provenance metadata")
     evidence: List[VisualEvidenceSchema]
     classification_result: Optional[Dict[str, Any]] = Field(default=None, description="Detailed multi-label classification outputs")
+    change_detected: Optional[bool] = Field(default=None, description="Whether significant surface change was detected in bi-temporal analysis")
+    changed_area_percent: Optional[float] = Field(default=None, description="Percentage of scene area with detected change")
+    changed_pixels: Optional[int] = Field(default=None, description="Count of changed pixels detected")
+    total_pixels: Optional[int] = Field(default=None, description="Total pixels evaluated in change detection")
     trace: ExecutionTraceSchema
     metadata: Dict[str, Any] = Field(default_factory=dict)
     confidence_breakdown: Optional[ConfidenceBreakdownSchema] = None

@@ -328,9 +328,10 @@ class DeterministicVerifier:
                 is_disclaiming_coreg = any(
                     neg in c_text_lower for neg in [
                         "lack", "not", "unverified", "unperformed", "cannot",
-                        "without", "no verified", "unregistered", "disparate"
+                        "without", "no verified", "unregistered", "disparate",
+                        "false", "no", "failed", "unaligned", "none", "incomplete"
                     ]
-                )
+                ) or bool(re.search(r'co-?regist(?:ered|ration)\s*(?:status)?\s*[:=]?\s*(?:false|no|none|unperformed|unaligned)', c_text_lower))
                 reg_status = evidence_package.registration_status or {}
                 is_coreg = bool(reg_status.get("co_registered", False))
                 if not is_disclaiming_coreg:
@@ -594,13 +595,17 @@ class DeterministicVerifier:
                     aid = str(asset.get("id", "")).lower()
                     desc = str(asset.get("description", "")).lower()
                     key = str(asset.get("asset_key", "")).lower()
+                    raw_bands = asset.get("bands") or []
+                    bands = [str(b).upper() for b in raw_bands] if isinstance(raw_bands, list) else [str(raw_bands).upper()]
+
                     if "rgb" in cat or "visual" in cat or "rgb_visual" in aid or "visual" in aid:
-                        is_rgb_only = True
-                    if "b04" in aid or "b04" in key or "red" in key or "b04" in desc:
+                        if not any(b in bands for b in ["B04", "B08"]):
+                            is_rgb_only = True
+                    if "b04" in aid or "b04" in key or "red" in key or "b04" in desc or "B04" in bands or "RED" in bands:
                         has_b04 = True
-                    if "b08" in aid or "b08" in key or "nir" in key or "b08" in desc:
+                    if "b08" in aid or "b08" in key or "nir" in key or "b08" in desc or "B08" in bands or "NIR" in bands:
                         has_b08 = True
-                    if "scl" in aid or "scl" in key or "scl" in desc:
+                    if "scl" in aid or "scl" in key or "scl" in desc or "SCL" in bands or "QUALITY_MASK" in bands:
                         has_scl = True
 
                 for art in evidence_package.evidence_artifacts:
@@ -611,22 +616,31 @@ class DeterministicVerifier:
                         has_b04 = True
                     if "b08" in art_id_l or "b08" in art_title_l or "nir" in art_title_l:
                         has_b08 = True
-                    if "scl" in art_id_l or "scl" in art_title_l or "quality_mask" in art_id_l:
+                    if "scl" in art_id_l or "scl" in art_title_l or "quality_mask" in art_id_l or "scl" in art_type_l:
                         has_scl = True
                     if "pseudo" in art_id_l or "pseudo" in art_title_l or "rgb_ndvi" in art_id_l or "visual" in art_type_l:
                         is_rgb_only = True
 
                 q_data = evidence_package.quality_screening or {}
                 if isinstance(q_data, dict):
-                    if q_data.get("optical") or q_data.get("scl") or "clear_mask" in q_data or q_data.get("status") in ("evaluated", "screened") or q_data.get("is_evaluated"):
+                    if q_data.get("optical") or q_data.get("scl") or "clear_mask" in q_data or q_data.get("status") in ("evaluated", "screened") or q_data.get("is_evaluated") or q_data.get("screened"):
                         has_scl = True
 
                 for pm in evidence_package.physical_measurements:
-                    if "b04" in pm.name.lower() or "red" in pm.name.lower():
+                    pm_l = pm.name.lower()
+                    mask_l = (pm.mask_applied or "").lower()
+                    cal_l = (pm.calibration_quantity or "").lower()
+                    if "ndvi" in pm_l or "ndvi" in cal_l:
+                        if pm.value is not None:
+                            has_b04 = True
+                            has_b08 = True
+                            if "scl" in mask_l or "screened" in mask_l or "clear" in mask_l:
+                                has_scl = True
+                    if "b04" in pm_l or "red" in pm_l:
                         has_b04 = True
-                    if "b08" in pm.name.lower() or "nir" in pm.name.lower():
+                    if "b08" in pm_l or "nir" in pm_l:
                         has_b08 = True
-                    if "scl" in pm.mask_applied.lower() or "quality" in pm.mask_applied.lower():
+                    if "scl" in mask_l or "quality" in mask_l:
                         has_scl = True
 
                 if is_genuine_or_calibrated_claim:
@@ -705,9 +719,11 @@ class DeterministicVerifier:
                     desc = str(asset.get("description", "")).lower()
                     key = str(asset.get("asset_key", "")).lower()
                     pol = str(asset.get("polarization", "")).lower()
-                    if "vv" in aid or "vv" in key or "vv" in desc or "vv" in pol:
+                    raw_bands = asset.get("bands") or []
+                    bands = [str(b).upper() for b in raw_bands] if isinstance(raw_bands, list) else [str(raw_bands).upper()]
+                    if "vv" in aid or "vv" in key or "vv" in desc or "vv" in pol or "VV" in bands:
                         has_vv = True
-                    if "vh" in aid or "vh" in key or "vh" in desc or "vh" in pol:
+                    if "vh" in aid or "vh" in key or "vh" in desc or "vh" in pol or "VH" in bands:
                         has_vh = True
                     if "dual_vv_vh" in pol or "dual" in pol:
                         has_vv = True
@@ -1000,11 +1016,18 @@ class EvidencePackageBuilder:
         if meta.get("provenance") and isinstance(meta["provenance"], dict):
             p = meta["provenance"]
             if p.get("scene_id") or p.get("id"):
+                p_bands = p.get("bands_acquired") or p.get("bands") or []
+                if isinstance(p_bands, str):
+                    p_bands = [p_bands]
+                b_str = " ".join(p_bands)
                 source_assets.append({
                     "id": p.get("scene_id") or p.get("id"),
-                    "collection": p.get("collection") or meta.get("sensor"),
-                    "calibration": p.get("calibration", "unspecified"),
-                    "asset_category": p.get("asset_category")
+                    "collection": p.get("collection") or meta.get("sensor") or ("sentinel-2-l2a" if any("b0" in b.lower() for b in p_bands) else None),
+                    "bands": list(p_bands),
+                    "calibration": p.get("calibration", "surface_reflectance_boa" if any("b0" in b.lower() for b in p_bands) else "unspecified"),
+                    "asset_category": p.get("asset_category") or ("scientific_multispectral" if any("b0" in b.lower() for b in p_bands) else None),
+                    "description": f"Scene {p.get('scene_id') or p.get('id')} with {b_str}".strip(),
+                    "asset_key": f"{p.get('scene_id') or p.get('id')}_{b_str}".strip()
                 })
 
         for sc in meta.get("retrieved_scenes", []):
@@ -1021,6 +1044,29 @@ class EvidencePackageBuilder:
                     "asset_category": "scientific_multispectral" if "sentinel-2" in coll.lower() else "scientific_sar",
                     "polarization": "DUAL_VV_VH" if "sentinel-1" in coll.lower() else None
                 })
+
+        if meta.get("ndvi_result") and isinstance(meta["ndvi_result"], dict):
+            source_assets.append({
+                "id": "sentinel2_calibrated_l2a_b04_b08_scl",
+                "collection": "sentinel-2-l2a",
+                "bands": ["B04", "B08", "SCL"],
+                "asset_key": "b04_b08_scl",
+                "description": "Sentinel-2 L2A calibrated surface reflectance B04 (Red), B08 (NIR) and SCL quality mask",
+                "calibration": "surface_reflectance_boa",
+                "asset_category": "scientific_multispectral"
+            })
+
+        if meta.get("dprvi_result") and isinstance(meta["dprvi_result"], dict):
+            source_assets.append({
+                "id": "sentinel1_rtc_calibrated_vv_vh",
+                "collection": "sentinel-1-rtc",
+                "bands": ["VV", "VH"],
+                "asset_key": "vv_vh",
+                "description": "Sentinel-1 RTC radiometrically terrain-corrected gamma0 VV and VH dual-polarization",
+                "calibration": "rtc_gamma0_linear_power",
+                "asset_category": "scientific_sar",
+                "polarization": "DUAL_VV_VH"
+            })
 
         opt_chg_info = meta.get("temporal_optical_change")
         if isinstance(opt_chg_info, dict) and opt_chg_info.get("status") != "unsupported_zero_valid_pixels":
@@ -1047,15 +1093,23 @@ class EvidencePackageBuilder:
                 "polarization": "DUAL_VV_VH"
             })
 
-        # Deduplicate source assets by ID
-        dedup_assets = []
-        seen_asset_ids = set()
+        # Deduplicate source assets by ID, merging attributes
+        assets_by_id = {}
         for sa in source_assets:
             sa_id = str(sa.get("id", ""))
-            if sa_id and sa_id not in seen_asset_ids:
-                seen_asset_ids.add(sa_id)
-                dedup_assets.append(sa)
-        source_assets = dedup_assets
+            if not sa_id:
+                continue
+            if sa_id not in assets_by_id:
+                assets_by_id[sa_id] = dict(sa)
+            else:
+                existing = assets_by_id[sa_id]
+                for k, v in sa.items():
+                    if v is not None and (existing.get(k) in (None, "", [], "unspecified")):
+                        existing[k] = v
+                    elif k == "bands" and isinstance(v, list):
+                        existing_bands = existing.get("bands") or []
+                        existing["bands"] = list(dict.fromkeys(existing_bands + v))
+        source_assets = list(assets_by_id.values())
 
         # 3. CRS, Resolution, Dimensions
         crs = meta.get("crs_display") or meta.get("crs")
@@ -1096,22 +1150,27 @@ class EvidencePackageBuilder:
                 dims = f"{p_dims[0]}x{p_dims[1]}"
 
         # 5. Valid pixel count & Quality Screening
-        valid_px = reg_info.get("valid_pixels") or reg_info.get("valid_pixel_count") or meta.get("valid_pixel_count")
+        valid_px = reg_info.get("valid_pixels") if reg_info.get("valid_pixels") is not None else reg_info.get("valid_pixel_count")
+        if valid_px is None:
+            valid_px = meta.get("valid_pixel_count") if meta.get("valid_pixel_count") is not None else meta.get("valid_pixels")
         if valid_px is None and isinstance(opt_chg_info, dict):
             valid_px = opt_chg_info.get("joint_valid_pixel_count")
         if valid_px is None and isinstance(sar_chg_info, dict):
             valid_px = sar_chg_info.get("joint_valid_pixel_count")
-        total_px = reg_info.get("total_pixels") or reg_info.get("total_pixel_count") or meta.get("total_pixels")
+        total_px = reg_info.get("total_pixels") if reg_info.get("total_pixels") is not None else reg_info.get("total_pixel_count")
+        if total_px is None:
+            total_px = meta.get("total_pixels") if meta.get("total_pixels") is not None else meta.get("total_pixel_count")
         if total_px is None and isinstance(opt_chg_info, dict):
             total_px = opt_chg_info.get("total_pixel_count")
         if total_px is None and isinstance(sar_chg_info, dict):
             total_px = sar_chg_info.get("total_pixel_count")
-        if total_px is None and data.get("total_pixels"):
+        if total_px is None and data.get("total_pixels") is not None:
             total_px = data.get("total_pixels")
+
         if valid_px is None and total_px is not None:
             valid_px = total_px
         valid_pct = reg_info.get("valid_percentage")
-        if valid_pct is None and valid_px and total_px:
+        if valid_pct is None and valid_px is not None and total_px:
             valid_pct = round((valid_px / total_px) * 100.0, 2)
 
         # Quality screening provenance

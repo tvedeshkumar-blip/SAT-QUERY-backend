@@ -295,7 +295,7 @@ class SiameseRSChangeDetector(BaseChangeDetector):
 
         # Dynamic repository-root candidate lookup anchored from this file
         current_file = os.path.abspath(__file__)
-        repo_root = os.path.abspath(os.path.join(current_file, "..", "..", "..", "..", ".."))
+        repo_root = os.path.abspath(os.path.join(current_file, "..", "..", "..", ".."))
 
         # 2. Environment variable has next priority
         env_path = os.getenv("CHANGE_MODEL_CHECKPOINT_PATH") or os.getenv("RS_CHANGE_CHECKPOINT_PATH")
@@ -306,9 +306,13 @@ class SiameseRSChangeDetector(BaseChangeDetector):
 
         candidates = [
             os.path.join(repo_root, "models", "weights", "bit_cd.pth"),
+            os.path.join(repo_root, "app", "models", "weights", "bit_cd.pth"),
+            os.path.join(repo_root, "data", "weights", "bit_cd.pth"),
             os.path.join(os.getcwd(), "models", "weights", "bit_cd.pth"),
+            os.path.join(os.getcwd(), "app", "models", "weights", "bit_cd.pth"),
             os.path.join(os.getcwd(), "..", "models", "weights", "bit_cd.pth"),
-            "models/weights/bit_cd.pth"
+            "models/weights/bit_cd.pth",
+            "app/models/weights/bit_cd.pth"
         ]
         for c in candidates:
             if c and os.path.exists(c):
@@ -339,6 +343,72 @@ class SiameseRSChangeDetector(BaseChangeDetector):
     def is_available(self) -> bool:
         """Returns True if and only if the physical checkpoint file exists on disk."""
         return bool(self.checkpoint_path and os.path.exists(self.checkpoint_path))
+
+    def check_readiness(self) -> Dict[str, Any]:
+        """
+        Assesses model readiness distinguishing:
+        - 'ready': Checkpoint exists and is loadable/loaded
+        - 'checkpoint_not_found': Physical weight file absent
+        - 'incompatible_checkpoint': Weight file corrupt or unrecognized
+        - 'dependency_error': PyTorch or model architecture import failed
+        - 'initialization_failed': Instantiation or weight loading error
+        """
+        try:
+            import torch
+            from app.models.change_detection.bit_model import BitemporalImageTransformer
+        except Exception as e:
+            return {
+                "status": "dependency_error",
+                "ready": False,
+                "detail": f"Required ML dependencies missing: {e}",
+                "checkpoint_path": self.checkpoint_path
+            }
+
+        if not self.checkpoint_path or not os.path.exists(self.checkpoint_path):
+            return {
+                "status": "checkpoint_not_found",
+                "ready": False,
+                "detail": f"BIT-CD neural weights not found at '{self.checkpoint_path}'",
+                "checkpoint_path": self.checkpoint_path
+            }
+
+        if self._is_loaded and self._model is not None:
+            return {
+                "status": "ready",
+                "ready": True,
+                "detail": "BIT-CD neural model loaded in memory",
+                "checkpoint_path": self.checkpoint_path
+            }
+
+        try:
+            device = torch.device("cpu")
+            ckpt = torch.load(self.checkpoint_path, map_location=device, weights_only=False)
+            if not isinstance(ckpt, dict) and not hasattr(ckpt, "state_dict"):
+                return {
+                    "status": "incompatible_checkpoint",
+                    "ready": False,
+                    "detail": "Checkpoint format unrecognized (not a state_dict or dict)",
+                    "checkpoint_path": self.checkpoint_path
+                }
+        except Exception as e:
+            return {
+                "status": "incompatible_checkpoint",
+                "ready": False,
+                "detail": f"Checkpoint failed to load: {e}",
+                "checkpoint_path": self.checkpoint_path
+            }
+
+        return {
+            "status": "ready",
+            "ready": True,
+            "detail": "BIT-CD neural checkpoint verified on disk and compatible",
+            "checkpoint_path": self.checkpoint_path
+        }
+
+    @property
+    def readiness_status(self) -> str:
+        """Returns structured readiness status string."""
+        return self.check_readiness()["status"]
 
     def _resolve_device(self):
         import torch
@@ -709,6 +779,24 @@ class ChangeDetectionProvider(BaseModel):
         self.baseline = PixelDifferenceChangeBaseline()
         self.deep_detector = SiameseRSChangeDetector()
 
+    def check_readiness(self) -> Dict[str, Any]:
+        """Assesses change detection orchestrator readiness and fallback capabilities."""
+        deep_readiness = self.deep_detector.check_readiness()
+        return {
+            "status": "ready" if deep_readiness["ready"] else deep_readiness["status"],
+            "primary_model": self.deep_detector.model_name,
+            "actual_model": self.deep_detector.model_name if deep_readiness["ready"] else self.baseline.model_name,
+            "primary_readiness": deep_readiness["status"],
+            "primary_ready": deep_readiness["ready"],
+            "fallback_available": True,
+            "fallback_model": self.baseline.model_name,
+            "detail": deep_readiness["detail"]
+        }
+
+    @property
+    def readiness_status(self) -> str:
+        return self.check_readiness()["status"]
+
     def predict(
         self, 
         images: List[np.ndarray], 
@@ -730,21 +818,23 @@ class ChangeDetectionProvider(BaseModel):
                 )
 
         # Fallback to verified baseline
+        readiness = self.deep_detector.check_readiness()
+        fb_status = readiness["status"] if not self.deep_detector.is_available else "inference_failed"
         logger.info(
-            f"Neural change detector checkpoint '{self.deep_detector.checkpoint_path}' unavailable. "
+            f"Neural change detector checkpoint '{self.deep_detector.checkpoint_path}' unavailable ({fb_status}). "
             f"Using baseline fallback: '{self.baseline.model_name}'."
         )
         res = self.baseline.predict(images, query, metadata)
         res["primary_model"] = primary_name
         res["actual_model_used"] = self.baseline.model_name
         res["fallback_used"] = True
-        res["model_status"] = "checkpoint_not_found" if not self.deep_detector.is_available else "inference_failed"
+        res["model_status"] = fb_status
         res["implementation_status"] = "baseline"
         res["models"] = [self.model_name, primary_name, self.baseline.model_name]
         res["model_provenance"] = {
             "primary_model": primary_name,
             "actual_model_used": self.baseline.model_name,
-            "checkpoint_status": "checkpoint_not_found" if not self.deep_detector.is_available else "inference_failed",
+            "checkpoint_status": fb_status,
             "fallback_used": True,
             "device": "cpu",
             "preprocessing": "Grayscale spectral difference with thresholding"

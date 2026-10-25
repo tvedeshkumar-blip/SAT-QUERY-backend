@@ -50,7 +50,38 @@ def compute_calibrated_ndvi(
         b04_meta = target_meta
 
     if b04_arr is None or b08_arr is None:
-        raise ValueError("Both B04 (Red) and B08 (NIR) arrays are required to compute calibrated NDVI.")
+        missing = []
+        if b04_arr is None:
+            missing.append("B04 (Red)")
+        if b08_arr is None:
+            missing.append("B08 (NIR)")
+        return {
+            "status": "missing_bands",
+            "is_calibrated": False,
+            "missing_bands": missing,
+            "summary": f"Calibrated Sentinel-2 NDVI unsupported: Missing required band array(s): {', '.join(missing)}.",
+            "ndvi_mean": None,
+            "ndvi_p90": None,
+            "ndvi_median": None,
+            "ndvi_min": None,
+            "ndvi_max": None,
+            "vegetation_coverage_pct": None,
+            "vegetation_threshold": vegetation_threshold,
+            "veg_pixel_count": 0,
+            "vegetation_pixel_count": 0,
+            "valid_pixel_count": 0,
+            "total_pixel_count": 0,
+            "masked_pixel_count": 0,
+            "valid_data_fraction": 0.0,
+            "valid_mask": None,
+            "ndvi_array": None,
+            "colorized_preview_base64": None,
+            "preview_base64": None,
+            "scl_evaluation": None,
+            "scale_factor_applied": scale_factor,
+            "offset_applied": offset,
+            "scientific_limitations": ["Missing required spectral bands for NDVI calculation."]
+        }
 
     # 1. Extract 2D single-band rasters
     if b04_arr.ndim == 3:
@@ -241,6 +272,7 @@ def compute_calibrated_ndvi(
         "valid_pixel_count": valid_pixel_count,
         "total_pixel_count": total_pixels,
         "masked_pixel_count": total_pixels - valid_pixel_count,
+        "valid_data_fraction": round(float(valid_pixel_count / max(1, total_pixels)), 4),
         "valid_mask": valid_mask,
         "ndvi_array": ndvi_arr,
         "colorized_preview_base64": colorized_b64,
