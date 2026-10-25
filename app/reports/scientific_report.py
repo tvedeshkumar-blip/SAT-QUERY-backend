@@ -581,6 +581,10 @@ def generate_scientific_markdown(report: ScientificReportSchema) -> str:
             lines.append(f"| **Quality Mask Policy** | `{prov.scl_masking_policy}` | Classes 0, 1, 3, 8, 9, 10 excluded; invalid denominator masked |")
         if prov.ndvi_status == "unsupported_zero_valid_pixels":
             lines.append(f"| **Calculation Status** | `unsupported_zero_valid_pixels` | Zero valid clear pixels observed; numerical NDVI statistics suppressed |")
+        elif prov.ndvi_status == "missing_bands":
+            lines.append(f"| **Calculation Status** | `missing_bands` | Missing required B04 (Red) or B08 (NIR) multispectral bands; calibrated NDVI cannot be computed on RGB browse imagery |")
+        elif prov.ndvi_status:
+            lines.append(f"| **Calculation Status** | `{prov.ndvi_status}` | Calibrated NDVI calculation status |")
 
     if prov.dprvi_mean is not None or prov.dprvi_status:
         lines.append("")
@@ -605,6 +609,12 @@ def generate_scientific_markdown(report: ScientificReportSchema) -> str:
         lines.append(f"| **Terrain Layover/Shadow Mask** | `{prov.sar_terrain_mask_status or 'unavailable_from_stac_provider'}` | Provider geometric mask unavailable; terrain relief shadows not masked |")
         if prov.dprvi_status == "unsupported_zero_valid_pixels":
             lines.append(f"| **Calculation Status** | `unsupported_zero_valid_pixels` | Zero valid radar pixels observed; numerical dual-pol statistics suppressed |")
+        elif prov.dprvi_status == "missing_polarization":
+            lines.append(f"| **Calculation Status** | `missing_polarization` | Missing required dual-polarization (VV/VH) radar telemetry |")
+        elif prov.dprvi_status == "unsupported_rgb_as_sar":
+            lines.append(f"| **Calculation Status** | `unsupported_rgb_as_sar` | Optical RGB visual browse images cannot be processed as SAR radar inputs |")
+        elif prov.dprvi_status:
+            lines.append(f"| **Calculation Status** | `{prov.dprvi_status}` | Dual-polarization SAR processing status |")
 
     if prov.temporal_t1_datetime and prov.temporal_t2_datetime and prov.vegetation_loss_pct is None and prov.radar_canopy_loss_pct is None:
         lines.append("")
